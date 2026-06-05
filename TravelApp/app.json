@@ -1,0 +1,16 @@
+{
+  "plugins": [
+    "expo-sqlite",
+    "@react-native-community/datetimepicker"
+  ],
+  "extra": {
+    "eas": {
+      "projectId": "499a70fc-f225-49b8-a54b-cfdda9604c5d"
+    }
+  },
+  "expo": {
+    "android": {
+      "package": "com.pawik94.travelapp"
+    }
+  }
+}
