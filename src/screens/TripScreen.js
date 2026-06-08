@@ -227,8 +227,8 @@ export default function TripScreen({ navigation, route }) {
                 <Text style={styles.balanceSub}>Zapłacił wydatki: {formatPLN(b.paid)}</Text>
                 <Text style={styles.balanceSub}>Powinien: {formatPLN(b.shouldPay)}</Text>
                 <Text style={[styles.balanceNet,{color}]}>
-                  {b.net>0.005?`▲ należy mu się ${formatPLN(Math.abs(b.net))}`:
-                   b.net<-0.005?`▼ powinien oddać ${formatPLN(Math.abs(b.net))}':'✓ rozliczony'}
+                  {b.net>0.005?'▲ należy mu się '+formatPLN(Math.abs(b.net)):
+                   b.net<-0.005?'▼ powinien oddać '+formatPLN(Math.abs(b.net)):'✓ rozliczony'}
                 </Text>
               </View>
             </View>
@@ -262,9 +262,9 @@ export default function TripScreen({ navigation, route }) {
                 <View style={styles.payLeft}>
                   <Text style={styles.payNames}>
                     {p.from_name} → {p.to_name}
-                    {p.pair_name?`  (za parę: ${p.pair_name})`:''}
+                    {p.pair_name?'  (za parę: '+p.pair_name+')':''}
                   </Text>
-                  <Text style={styles.payDate}>{formatDate(p.date)}{p.note?`  ·  ${p.note}`:''}</Text>
+                  <Text style={styles.payDate}>{formatDate(p.date)}{p.note?'  ·  '+p.note:''}</Text>
                 </View>
                 <Text style={styles.payAmount}>{formatPLN(p.amount)}</Text>
               </TouchableOpacity>
