@@ -184,6 +184,13 @@ export const insertPayment = async (p) => {
     [p.trip_id, p.from_traveler, p.to_traveler, p.amount, p.date, p.note||'', p.on_behalf_pair||null]);
 };
 export const deletePayment = async (id) => { const db = await getDB(); await db.runAsync('DELETE FROM payments WHERE id=?', [id]); };
+export const updatePayment = async (p) => {
+  const db = await getDB();
+  await db.runAsync(
+    'UPDATE payments SET from_traveler=?,to_traveler=?,amount=?,date=?,note=?,on_behalf_pair=? WHERE id=?',
+    [p.from_traveler, p.to_traveler, p.amount, p.date, p.note||'', p.on_behalf_pair||null, p.id]
+  );
+};
 
 export const exportTripCSV = async (tripId) => {
   const db = await getDB();

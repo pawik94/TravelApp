@@ -8,7 +8,7 @@ import { COLORS } from '../theme';
 import {
   getExpenses, deleteExpense, getTravelers, getCategories,
   getExpensesForSettlement, exportTripCSV,
-  getPayments, insertPayment, deletePayment, getPairs,
+  getPayments, insertPayment, deletePayment, updatePayment, getPairs,
 } from '../database/db';
 import { formatPLN, formatAmount, formatDate, todayStr } from '../utils/currency';
 import { calculateSettlement } from '../utils/settlement';
@@ -41,6 +41,7 @@ export default function TripScreen({ navigation, route }) {
   const [payForPair,    setPayForPair]    = useState(false);
   const [payPairId,     setPayPairId]     = useState(null);
   const [showPayDate,   setShowPayDate]   = useState(false);
+  const [editingPayment, setEditingPayment] = useState(null);
 
   const loadAll = useCallback(async () => {
     const [tvl, cats, pymnts, prs] = await Promise.all([
@@ -87,10 +88,23 @@ export default function TripScreen({ navigation, route }) {
   };
 
   const openPayModal = () => {
+    setEditingPayment(null);
     setPayFrom(travelers[0]?.id||null);
     setPayTo(travelers[1]?.id||null);
     setPayAmount(''); setPayDate(todayStr()); setPayNote('');
     setPayForPair(false); setPayPairId(pairs[0]?.id||null);
+    setShowPayModal(true);
+  };
+
+  const openEditPayModal = (p) => {
+    setEditingPayment(p);
+    setPayFrom(p.from_traveler);
+    setPayTo(p.to_traveler);
+    setPayAmount(String(p.amount));
+    setPayDate(p.date);
+    setPayNote(p.note||'');
+    setPayForPair(!!p.on_behalf_pair);
+    setPayPairId(p.on_behalf_pair||pairs[0]?.id||null);
     setShowPayModal(true);
   };
 
@@ -103,20 +117,43 @@ export default function TripScreen({ navigation, route }) {
 
     const selectedPair = payForPair ? pairs.find(p=>p.id===payPairId) : null;
 
-    await insertPayment({
-      trip_id:tripId, from_traveler:payFrom, to_traveler:payTo,
-      amount:amt, date:payDate, note:payNote.trim(),
-      on_behalf_pair: payForPair ? payPairId : null,
-    });
+    if (editingPayment) {
+      await updatePayment({
+        id: editingPayment.id,
+        from_traveler:payFrom, to_traveler:payTo,
+        amount:amt, date:payDate, note:payNote.trim(),
+        on_behalf_pair: payForPair ? payPairId : null,
+      });
+    } else {
+      await insertPayment({
+        trip_id:tripId, from_traveler:payFrom, to_traveler:payTo,
+        amount:amt, date:payDate, note:payNote.trim(),
+        on_behalf_pair: payForPair ? payPairId : null,
+      });
+    }
+    setEditingPayment(null);
     setShowPayModal(false);
     loadAll();
   };
 
-  const handleDeletePayment = (p) => {
-    Alert.alert('Usuń płatność',`Usunąć wpłatę ${formatPLN(p.amount)}?`,[
-      {text:'Anuluj',style:'cancel'},
-      {text:'Usuń',style:'destructive',onPress:async()=>{await deletePayment(p.id);loadAll();}},
-    ]);
+  const handlePaymentLongPress = (p) => {
+    Alert.alert(
+      'Płatność',
+      formatPLN(p.amount)+' · '+p.from_name+' → '+p.to_name,
+      [
+        {text:'✏️ Edytuj', onPress:()=>openEditPayModal(p)},
+        {text:'🗑️ Usuń', style:'destructive', onPress:async()=>{await deletePayment(p.id);loadAll();}},
+        {text:'Anuluj', style:'cancel'},
+      ]
+    );
+  };
+
+  const handleQuickPay = async (tx) => {
+    await insertPayment({
+      trip_id:tripId, from_traveler:tx.fromId, to_traveler:tx.toId,
+      amount:tx.amount, date:todayStr(), note:'', on_behalf_pair:null,
+    });
+    loadAll();
   };
 
   const RightButtons = () => (
@@ -188,17 +225,35 @@ export default function TripScreen({ navigation, route }) {
       if(!catMap[key]) catMap[key]={name:key,color:e.category_color||COLORS.textSecondary,total:0};
       catMap[key].total+=e.amount_pln;
     });
+    // Payment effects: +made -received
+    const payEff={};
+    travelers.forEach(t=>{payEff[t.id]=0;});
+    payments.forEach(p=>{
+      if(payEff[p.from_traveler]!==undefined) payEff[p.from_traveler]+=parseFloat(p.amount);
+      if(payEff[p.to_traveler]!==undefined)   payEff[p.to_traveler]  -=parseFloat(p.amount);
+    });
     return (
       <ScrollView contentContainerStyle={styles.summaryContent}>
         <Text style={styles.summaryHeader}>Suma całkowita</Text>
         <Text style={styles.grandTotal}>{formatPLN(expenses.reduce((s,e)=>s+e.amount_pln,0))}</Text>
-        <Text style={styles.summaryHeader}>Według osoby (zapłacono)</Text>
-        {perPerson.map(p=>(
-          <View key={p.id} style={styles.summaryRow}>
-            <Text style={styles.summaryName}>👤 {p.name}</Text>
-            <Text style={styles.summaryValue}>{formatPLN(p.paid)}</Text>
-          </View>
-        ))}
+        <Text style={styles.summaryHeader}>Według osoby (po rozliczeniach)</Text>
+        {perPerson.map(p=>{
+          const eff=payEff[p.id]||0;
+          const effective=p.paid+eff;
+          return (
+            <View key={p.id} style={styles.summaryRow}>
+              <Text style={styles.summaryName}>👤 {p.name}</Text>
+              <View style={{alignItems:'flex-end'}}>
+                <Text style={styles.summaryValue}>{formatPLN(effective)}</Text>
+                {Math.abs(eff)>0.005&&(
+                  <Text style={styles.summaryAdjust}>
+                    {'wydatki '+formatPLN(p.paid)+(eff>0?' +zwroty '+formatPLN(eff):' −zwroty '+formatPLN(-eff))}
+                  </Text>
+                )}
+              </View>
+            </View>
+          );
+        })}
         <Text style={styles.summaryHeader}>Według kategorii</Text>
         {Object.values(catMap).sort((a,b)=>b.total-a.total).map((c,i)=>(
           <View key={i} style={styles.summaryRow}>
@@ -240,12 +295,17 @@ export default function TripScreen({ navigation, route }) {
           ?<View style={styles.settledBox}><Text style={styles.settledText}>✅ Wszyscy są rozliczeni!</Text></View>
           :transactions.map((tx,i)=>(
             <View key={i} style={styles.txRow}>
-              <Text style={styles.txFrom}>{tx.from}</Text>
-              <View style={{alignItems:'center',marginHorizontal:8}}>
+              <View style={styles.txInfo}>
+                <View style={styles.txNames}>
+                  <Text style={styles.txFrom}>{tx.from}</Text>
+                  <Text style={styles.txArrow}> → </Text>
+                  <Text style={styles.txTo}>{tx.to}</Text>
+                </View>
                 <Text style={styles.txAmount}>{formatPLN(tx.amount)}</Text>
-                <Text style={styles.txArrow}>→</Text>
               </View>
-              <Text style={styles.txTo}>{tx.to}</Text>
+              <TouchableOpacity style={styles.txPayBtn} onPress={()=>handleQuickPay(tx)} activeOpacity={0.75}>
+                <Text style={styles.txPayBtnText}>✓ Zrealizuj</Text>
+              </TouchableOpacity>
             </View>
           ))
         }
@@ -258,7 +318,7 @@ export default function TripScreen({ navigation, route }) {
           <>
             <Text style={styles.summaryHeader}>Historia płatności</Text>
             {payments.map(p=>(
-              <TouchableOpacity key={p.id} style={styles.payRow} onLongPress={()=>handleDeletePayment(p)} activeOpacity={0.75}>
+              <TouchableOpacity key={p.id} style={styles.payRow} onLongPress={()=>handlePaymentLongPress(p)} activeOpacity={0.75}>
                 <View style={styles.payLeft}>
                   <Text style={styles.payNames}>
                     {p.from_name} → {p.to_name}
@@ -269,7 +329,7 @@ export default function TripScreen({ navigation, route }) {
                 <Text style={styles.payAmount}>{formatPLN(p.amount)}</Text>
               </TouchableOpacity>
             ))}
-            <Text style={styles.payHint}>Przytrzymaj płatność aby usunąć</Text>
+            <Text style={styles.payHint}>Przytrzymaj płatność aby edytować lub usunąć</Text>
           </>
         )}
       </ScrollView>
@@ -305,7 +365,7 @@ export default function TripScreen({ navigation, route }) {
         <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={()=>setShowPayModal(false)}>
           <View style={styles.modalSheet} onStartShouldSetResponder={()=>true}>
             <View style={styles.modalHandle}/>
-            <Text style={styles.modalTitle}>Zarejestruj płatność</Text>
+            <Text style={styles.modalTitle}>{editingPayment?'Edytuj płatność':'Zarejestruj płatność'}</Text>
 
             <Text style={styles.modalLabel}>Kto płaci</Text>
             <ModalPicker value={payFrom} options={travelerOptions} onChange={setPayFrom} placeholder="Wybierz..." title="Kto płaci"/>
@@ -389,17 +449,22 @@ const styles = StyleSheet.create({
   catDotSm:      {width:10,height:10,borderRadius:5,marginRight:10},
   summaryName:   {flex:1,color:COLORS.text,fontSize:15},
   summaryValue:  {color:COLORS.text,fontSize:15,fontWeight:'700'},
+  summaryAdjust: {color:COLORS.textSecondary,fontSize:11,marginTop:1},
   balanceRow:    {backgroundColor:COLORS.surface,borderRadius:12,padding:14,marginBottom:10,borderWidth:1,borderColor:COLORS.border},
   balanceName:   {color:COLORS.text,fontSize:15,fontWeight:'600'},
   balanceSub:    {color:COLORS.textSecondary,fontSize:12,marginBottom:2},
   balanceNet:    {fontSize:13,fontWeight:'700',marginTop:4},
   settledBox:    {backgroundColor:COLORS.surfaceVariant,borderRadius:12,padding:20,alignItems:'center'},
   settledText:   {color:COLORS.success,fontSize:16,fontWeight:'700'},
-  txRow:        {flexDirection:'row',alignItems:'center',backgroundColor:COLORS.surface,borderRadius:12,padding:16,marginBottom:10,borderWidth:1,borderColor:COLORS.border},
-  txFrom:       {flex:1,color:COLORS.error,fontSize:15,fontWeight:'600'},
-  txAmount:     {color:COLORS.text,fontSize:13,fontWeight:'700'},
-  txArrow:      {color:COLORS.textSecondary,fontSize:18},
-  txTo:         {flex:1,color:COLORS.success,fontSize:15,fontWeight:'600',textAlign:'right'},
+  txRow:        {backgroundColor:COLORS.surface,borderRadius:12,padding:14,marginBottom:10,borderWidth:1,borderColor:COLORS.border},
+  txInfo:       {flexDirection:'row',alignItems:'center',justifyContent:'space-between',marginBottom:10},
+  txNames:      {flexDirection:'row',alignItems:'center',flex:1,flexWrap:'wrap'},
+  txFrom:       {color:COLORS.error,fontSize:14,fontWeight:'600'},
+  txAmount:     {color:COLORS.text,fontSize:14,fontWeight:'700'},
+  txArrow:      {color:COLORS.textSecondary,fontSize:15,marginHorizontal:4},
+  txTo:         {color:COLORS.success,fontSize:14,fontWeight:'600'},
+  txPayBtn:     {backgroundColor:COLORS.primary,borderRadius:8,paddingVertical:9,alignItems:'center'},
+  txPayBtnText: {color:COLORS.white,fontWeight:'700',fontSize:14},
   addPayBtn:     {backgroundColor:COLORS.surfaceVariant,borderRadius:12,borderWidth:1,borderColor:COLORS.primary,padding:14,alignItems:'center',marginTop:16},
   addPayBtnText: {color:COLORS.primary,fontWeight:'700',fontSize:15},
   payRow:   {flexDirection:'row',alignItems:'center',backgroundColor:COLORS.surface,borderRadius:12,padding:14,marginBottom:8,borderWidth:1,borderColor:COLORS.border},

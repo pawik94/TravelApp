@@ -14,7 +14,7 @@ export default function AddTripScreen({ navigation, route }) {
   const [comment,setComment]=useState(''); const [defaultCurrency,setDefaultCurrency]=useState('EUR');
   const [travelers,setTravelers]=useState([]); const [newTraveler,setNewTraveler]=useState('');
   const [pairs,setPairs]=useState([]);
-  const [showStart,setShowStart]=useState(false); const [showEnd,setShowEnd]=useState(false);
+  const [datePickerStep,setDatePickerStep]=useState(null); // null | 'start' | 'end'
   const [showPairModal,setShowPairModal]=useState(false);
   const [pairT1,setPairT1]=useState(null); const [pairT2,setPairT2]=useState(null); const [pairName,setPairName]=useState('');
 
@@ -29,6 +29,21 @@ export default function AddTripScreen({ navigation, route }) {
     const tvl = await getTravelers(editId);
     setTravelers(tvl);
     setPairs(await getPairs(editId));
+  };
+
+  const openDatePicker = () => setDatePickerStep('start');
+
+  const handleDateChange = (_, d) => {
+    if (!d) { setDatePickerStep(null); return; }
+    const iso = d.toISOString().split('T')[0];
+    if (datePickerStep === 'start') {
+      setStartDate(iso);
+      if (endDate && endDate < iso) setEndDate('');
+      setDatePickerStep('end');
+    } else {
+      setEndDate(iso);
+      setDatePickerStep(null);
+    }
   };
 
   const handleSave = async () => {
@@ -83,7 +98,7 @@ export default function AddTripScreen({ navigation, route }) {
     if (pairT1===pairT2)       { Alert.alert('Błąd','Wybierz dwie różne osoby'); return; }
     const t1 = travelers.find(t=>t.id===pairT1);
     const t2 = travelers.find(t=>t.id===pairT2);
-    const name = pairName.trim() || `${t1?.name} + ${t2?.name}`;
+    const name = pairName.trim() || (t1?.name||'') + ' + ' + (t2?.name||'');
     if (editId) {
       const id = await insertPair(editId, name, pairT1, pairT2);
       const t1n = travelers.find(t=>t.id===pairT1)?.name||'';
@@ -112,18 +127,29 @@ export default function AddTripScreen({ navigation, route }) {
         <Text style={styles.section}>Szczegóły podróży</Text>
         <TextInput style={styles.input} placeholder="Nazwa podróży *" placeholderTextColor={COLORS.textSecondary} value={name} onChangeText={setName} />
         <TextInput style={styles.input} placeholder="Cel podróży (np. Islandia)" placeholderTextColor={COLORS.textSecondary} value={destination} onChangeText={setDestination} />
-        <View style={styles.row}>
-          <TouchableOpacity style={[styles.dateBtn,{flex:1,marginRight:8}]} onPress={()=>setShowStart(true)}>
-            <Text style={styles.dateLbl}>Od</Text>
-            <Text style={[styles.dateVal,!startDate&&styles.datePlaceholder]}>{startDate?formatDate(startDate):'Wybierz'}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.dateBtn,{flex:1}]} onPress={()=>setShowEnd(true)}>
-            <Text style={styles.dateLbl}>Do</Text>
-            <Text style={[styles.dateVal,!endDate&&styles.datePlaceholder]}>{endDate?formatDate(endDate):'Wybierz'}</Text>
-          </TouchableOpacity>
-        </View>
-        {showStart && <DateTimePicker value={startDate?new Date(startDate):new Date()} mode="date" display="default" onChange={(_,d)=>{setShowStart(false);if(d)setStartDate(d.toISOString().split('T')[0]);}} />}
-        {showEnd   && <DateTimePicker value={endDate?new Date(endDate):new Date()}     mode="date" display="default" onChange={(_,d)=>{setShowEnd(false);  if(d)setEndDate(d.toISOString().split('T')[0]);}} />}
+        <TouchableOpacity style={styles.dateRangeBtn} onPress={openDatePicker} activeOpacity={0.75}>
+          <Text style={styles.dateLbl}>
+            {datePickerStep==='start'?'Wybierz datę początkową...':
+             datePickerStep==='end'  ?'Wybierz datę końcową...':'Termin podróży'}
+          </Text>
+          <View style={styles.dateRangeRow}>
+            <Text style={[styles.dateVal,!startDate&&styles.datePlaceholder]}>
+              {startDate?formatDate(startDate):'Data od'}
+            </Text>
+            <Text style={styles.dateArrow}> → </Text>
+            <Text style={[styles.dateVal,!endDate&&styles.datePlaceholder]}>
+              {endDate?formatDate(endDate):'Data do'}
+            </Text>
+          </View>
+        </TouchableOpacity>
+        {datePickerStep!==null&&(
+          <DateTimePicker
+            value={datePickerStep==='end'&&endDate?new Date(endDate):(startDate?new Date(startDate):new Date())}
+            mode="date" display="default"
+            minimumDate={datePickerStep==='end'&&startDate?new Date(startDate):undefined}
+            onChange={handleDateChange}
+          />
+        )}
         <TextInput style={[styles.input,{height:70,textAlignVertical:'top'}]} placeholder="Komentarz" placeholderTextColor={COLORS.textSecondary} value={comment} onChangeText={setComment} multiline />
 
         <Text style={styles.section}>Domyślna waluta</Text>
@@ -200,7 +226,9 @@ const styles = StyleSheet.create({
   hint:   { fontSize:12, color:COLORS.textSecondary, marginBottom:10 },
   input:  { backgroundColor:COLORS.surfaceVariant, borderRadius:10, borderWidth:1, borderColor:COLORS.border, color:COLORS.text, fontSize:15, paddingHorizontal:14, paddingVertical:13, marginBottom:10 },
   row:    { flexDirection:'row', marginBottom:10 },
-  dateBtn:{ backgroundColor:COLORS.surfaceVariant, borderRadius:10, borderWidth:1, borderColor:COLORS.border, padding:12 },
+  dateRangeBtn:  { backgroundColor:COLORS.surfaceVariant, borderRadius:10, borderWidth:1, borderColor:COLORS.border, padding:12, marginBottom:10 },
+  dateRangeRow:  { flexDirection:'row', alignItems:'center', marginTop:4 },
+  dateArrow:     { color:COLORS.textSecondary, fontSize:15, marginHorizontal:4 },
   dateLbl:{ fontSize:11, color:COLORS.textSecondary, marginBottom:2 },
   dateVal:{ fontSize:15, color:COLORS.text, fontWeight:'500' },
   datePlaceholder:{ color:COLORS.textSecondary, fontWeight:'400' },
