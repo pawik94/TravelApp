@@ -1,16 +1,23 @@
 {
-  "plugins": [
-    "expo-sqlite",
-    "@react-native-community/datetimepicker"
-  ],
-  "extra": {
-    "eas": {
-      "projectId": "499a70fc-f225-49b8-a54b-cfdda9604c5d"
-    }
-  },
   "expo": {
+    "name": "Travel Expenses",
+    "slug": "travel-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/499a70fc-f225-49b8-a54b-cfdda9604c5d"
+    },
     "android": {
-      "package": "com.pawik94.travelapp"
-    }
+      "package": "com.pawik94.travelexpenses",
+      "adaptiveIcon": {
+        "backgroundColor": "#0D0D0D"
+      }
+    },
+    "plugins": ["expo-sqlite", "expo-updates"]
   }
 }
