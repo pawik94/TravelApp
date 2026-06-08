@@ -12,6 +12,11 @@
     "updates": {
       "url": "https://u.expo.dev/499a70fc-f225-49b8-a54b-cfdda9604c5d"
     },
+    "extra": {
+      "eas": {
+        "projectId": "499a70fc-f225-49b8-a54b-cfdda9604c5d"
+      }
+    },
     "android": {
       "package": "com.pawik94.travelexpenses",
       "adaptiveIcon": {
