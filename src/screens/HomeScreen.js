@@ -4,6 +4,7 @@ import { COLORS } from '../theme';
 import { getTrips, deleteTrip, getTripStats } from '../database/db';
 import { formatPLN, formatDate } from '../utils/currency';
 import Header from '../components/Header';
+import { importTripJSON } from '../utils/backup';
 
 export default function HomeScreen({ navigation }) {
   const [trips, setTrips] = useState([]);
@@ -34,6 +35,11 @@ export default function HomeScreen({ navigation }) {
       },
       { text:'Anuluj', style:'cancel' },
     ]);
+  };
+
+  const handleImport = async () => {
+    const newTripId = await importTripJSON();
+    if (newTripId) loadData();
   };
 
   const renderTrip = ({ item }) => {
@@ -67,6 +73,9 @@ export default function HomeScreen({ navigation }) {
           </View>
         }
       />
+      <TouchableOpacity style={styles.fabSecondary} onPress={handleImport} activeOpacity={0.85}>
+        <Text style={styles.fabIcon}>📥</Text>
+      </TouchableOpacity>
       <TouchableOpacity style={styles.fab} onPress={() => navigation.navigate('AddTrip', { onBack:() => setTick(t=>t+1) })} activeOpacity={0.85}>
         <Text style={styles.fabIcon}>+</Text>
       </TouchableOpacity>
@@ -87,6 +96,7 @@ const styles = StyleSheet.create({
   emptyIcon:{ fontSize:64, marginBottom:16 },
   emptyTitle:{ fontSize:20, color:COLORS.text, fontWeight:'700' },
   emptyHint: { fontSize:14, color:COLORS.textSecondary, marginTop:8, textAlign:'center' },
+  fabSecondary: { position:'absolute', right:90, bottom:28, width:58, height:58, borderRadius:29, backgroundColor:COLORS.surfaceVariant, borderWidth:1, borderColor:COLORS.border, alignItems:'center', justifyContent:'center', elevation:4 },
   fab:      { position:'absolute', right:20, bottom:28, width:58, height:58, borderRadius:29, backgroundColor:COLORS.primary, alignItems:'center', justifyContent:'center', elevation:8 },
   fabIcon:  { color:COLORS.white, fontSize:32, lineHeight:36 },
 });

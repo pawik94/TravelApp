@@ -25,6 +25,13 @@ const _initDB = async (db) => {
       id INTEGER PRIMARY KEY AUTOINCREMENT, trip_id INTEGER NOT NULL, name TEXT NOT NULL,
       FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE
     );
+    CREATE TABLE IF NOT EXISTS pairs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, trip_id INTEGER NOT NULL,
+      name TEXT NOT NULL, traveler1_id INTEGER NOT NULL, traveler2_id INTEGER NOT NULL,
+      FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE,
+      FOREIGN KEY (traveler1_id) REFERENCES travelers(id) ON DELETE CASCADE,
+      FOREIGN KEY (traveler2_id) REFERENCES travelers(id) ON DELETE CASCADE
+    );
     CREATE TABLE IF NOT EXISTS categories (
       id INTEGER PRIMARY KEY AUTOINCREMENT, trip_id INTEGER NOT NULL, name TEXT NOT NULL, color TEXT DEFAULT '#757575'
     );
@@ -34,9 +41,7 @@ const _initDB = async (db) => {
       amount_pln REAL NOT NULL DEFAULT 0, exchange_rate REAL DEFAULT 1, date TEXT NOT NULL,
       method TEXT DEFAULT 'Gotowka', is_shared INTEGER DEFAULT 1, include_in_split INTEGER DEFAULT 1,
       comment TEXT DEFAULT '', created_at TEXT DEFAULT (datetime('now')),
-      FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE,
-      FOREIGN KEY (paid_by) REFERENCES travelers(id),
-      FOREIGN KEY (category_id) REFERENCES categories(id)
+      FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE
     );
     CREATE TABLE IF NOT EXISTS expense_shares (
       id INTEGER PRIMARY KEY AUTOINCREMENT, expense_id INTEGER NOT NULL,
@@ -48,6 +53,7 @@ const _initDB = async (db) => {
       id INTEGER PRIMARY KEY AUTOINCREMENT, trip_id INTEGER NOT NULL,
       from_traveler INTEGER NOT NULL, to_traveler INTEGER NOT NULL,
       amount REAL NOT NULL, date TEXT NOT NULL, note TEXT DEFAULT '',
+      on_behalf_pair INTEGER DEFAULT NULL,
       created_at TEXT DEFAULT (datetime('now')),
       FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE,
       FOREIGN KEY (from_traveler) REFERENCES travelers(id),
@@ -56,8 +62,19 @@ const _initDB = async (db) => {
   `);
   try { await db.execAsync(`ALTER TABLE trips ADD COLUMN default_currency TEXT DEFAULT 'EUR'`); } catch (_) {}
   try { await db.execAsync(`ALTER TABLE expense_shares ADD COLUMN custom_amount REAL DEFAULT NULL`); } catch (_) {}
+  try { await db.execAsync(`ALTER TABLE payments ADD COLUMN on_behalf_pair INTEGER DEFAULT NULL`); } catch (_) {}
+  try {
+    await db.execAsync(`CREATE TABLE IF NOT EXISTS pairs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, trip_id INTEGER NOT NULL,
+      name TEXT NOT NULL, traveler1_id INTEGER NOT NULL, traveler2_id INTEGER NOT NULL,
+      FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE,
+      FOREIGN KEY (traveler1_id) REFERENCES travelers(id) ON DELETE CASCADE,
+      FOREIGN KEY (traveler2_id) REFERENCES travelers(id) ON DELETE CASCADE
+    )`);
+  } catch (_) {}
 };
 
+// ─── TRIPS ───────────────────────────────────────────────────────────────────
 export const getTrips = async () => { const db = await getDB(); return db.getAllAsync('SELECT * FROM trips ORDER BY created_at DESC'); };
 export const getTripById = async (id) => { const db = await getDB(); return db.getFirstAsync('SELECT * FROM trips WHERE id=?', [id]); };
 export const getTripStats = async (tripId) => { const db = await getDB(); return db.getFirstAsync(`SELECT COUNT(*) AS count, COALESCE(SUM(amount_pln), 0) AS total FROM expenses WHERE trip_id=?`, [tripId]); };
@@ -76,15 +93,35 @@ export const updateTrip = async (trip) => {
 };
 export const deleteTrip = async (id) => { const db = await getDB(); await db.runAsync('DELETE FROM trips WHERE id=?', [id]); };
 
+// ─── TRAVELERS ───────────────────────────────────────────────────────────────
 export const getTravelers = async (tripId) => { const db = await getDB(); return db.getAllAsync('SELECT * FROM travelers WHERE trip_id=? ORDER BY id', [tripId]); };
 export const insertTraveler = async (tripId, name) => { const db = await getDB(); const r = await db.runAsync('INSERT INTO travelers (trip_id,name) VALUES (?,?)', [tripId, name]); return r.lastInsertRowId; };
 export const deleteTraveler = async (id) => { const db = await getDB(); await db.runAsync('DELETE FROM travelers WHERE id=?', [id]); };
 
+// ─── PAIRS ───────────────────────────────────────────────────────────────────
+export const getPairs = async (tripId) => {
+  const db = await getDB();
+  return db.getAllAsync(`
+    SELECT p.*, t1.name AS name1, t2.name AS name2
+    FROM pairs p
+    JOIN travelers t1 ON p.traveler1_id = t1.id
+    JOIN travelers t2 ON p.traveler2_id = t2.id
+    WHERE p.trip_id=? ORDER BY p.id`, [tripId]);
+};
+export const insertPair = async (tripId, name, t1id, t2id) => {
+  const db = await getDB();
+  const r = await db.runAsync('INSERT INTO pairs (trip_id,name,traveler1_id,traveler2_id) VALUES (?,?,?,?)', [tripId, name, t1id, t2id]);
+  return r.lastInsertRowId;
+};
+export const deletePair = async (id) => { const db = await getDB(); await db.runAsync('DELETE FROM pairs WHERE id=?', [id]); };
+
+// ─── CATEGORIES ──────────────────────────────────────────────────────────────
 export const getCategories = async (tripId) => { const db = await getDB(); return db.getAllAsync('SELECT * FROM categories WHERE trip_id=? ORDER BY name', [tripId]); };
 export const insertCategory = async (tripId, name, color) => { const db = await getDB(); const r = await db.runAsync('INSERT INTO categories (trip_id,name,color) VALUES (?,?,?)', [tripId, name, color]); return r.lastInsertRowId; };
 export const updateCategory = async (id, name, color) => { const db = await getDB(); await db.runAsync('UPDATE categories SET name=?,color=? WHERE id=?', [name, color, id]); };
 export const deleteCategory = async (id) => { const db = await getDB(); await db.runAsync('DELETE FROM categories WHERE id=?', [id]); };
 
+// ─── EXPENSES ────────────────────────────────────────────────────────────────
 export const getExpenses = async (tripId, filters = {}) => {
   const db = await getDB();
   let q = `SELECT e.*, t.name AS payer_name, c.name AS category_name, c.color AS category_color
@@ -107,9 +144,7 @@ export const insertExpense = async (expense, shares = []) => {
     [expense.trip_id,expense.paid_by,expense.category_id||null,expense.amount,expense.currency,expense.amount_pln,expense.exchange_rate,expense.date,expense.method,expense.is_shared?1:0,expense.include_in_split!==false?1:0,expense.comment||'']
   );
   const expenseId = r.lastInsertRowId;
-  if (!expense.is_shared && shares.length) {
-    for (const s of shares) await db.runAsync('INSERT INTO expense_shares (expense_id,traveler_id,custom_amount) VALUES (?,?,?)', [expenseId, s.traveler_id, s.custom_amount??null]);
-  }
+  for (const s of shares) await db.runAsync('INSERT INTO expense_shares (expense_id,traveler_id,custom_amount) VALUES (?,?,?)', [expenseId, s.traveler_id, s.custom_amount??null]);
   return expenseId;
 };
 export const updateExpense = async (expense, shares = []) => {
@@ -119,9 +154,7 @@ export const updateExpense = async (expense, shares = []) => {
     [expense.paid_by,expense.category_id||null,expense.amount,expense.currency,expense.amount_pln,expense.exchange_rate,expense.date,expense.method,expense.is_shared?1:0,expense.include_in_split!==false?1:0,expense.comment||'',expense.id]
   );
   await db.runAsync('DELETE FROM expense_shares WHERE expense_id=?', [expense.id]);
-  if (!expense.is_shared && shares.length) {
-    for (const s of shares) await db.runAsync('INSERT INTO expense_shares (expense_id,traveler_id,custom_amount) VALUES (?,?,?)', [expense.id, s.traveler_id, s.custom_amount??null]);
-  }
+  for (const s of shares) await db.runAsync('INSERT INTO expense_shares (expense_id,traveler_id,custom_amount) VALUES (?,?,?)', [expense.id, s.traveler_id, s.custom_amount??null]);
 };
 export const deleteExpense = async (id) => { const db = await getDB(); await db.runAsync('DELETE FROM expenses WHERE id=?', [id]); };
 export const getExpensesForSettlement = async (tripId) => {
@@ -133,16 +166,22 @@ export const getExpensesForSettlement = async (tripId) => {
   return expenses;
 };
 
+// ─── PAYMENTS ────────────────────────────────────────────────────────────────
 export const getPayments = async (tripId) => {
   const db = await getDB();
-  return db.getAllAsync(`SELECT p.*, f.name AS from_name, t.name AS to_name FROM payments p
-    JOIN travelers f ON p.from_traveler=f.id JOIN travelers t ON p.to_traveler=t.id
+  return db.getAllAsync(`
+    SELECT p.*, f.name AS from_name, t.name AS to_name,
+           pr.name AS pair_name, pr.traveler1_id, pr.traveler2_id
+    FROM payments p
+    JOIN travelers f ON p.from_traveler=f.id
+    JOIN travelers t ON p.to_traveler=t.id
+    LEFT JOIN pairs pr ON p.on_behalf_pair=pr.id
     WHERE p.trip_id=? ORDER BY p.date DESC, p.id DESC`, [tripId]);
 };
 export const insertPayment = async (p) => {
   const db = await getDB();
-  await db.runAsync('INSERT INTO payments (trip_id,from_traveler,to_traveler,amount,date,note) VALUES (?,?,?,?,?,?)',
-    [p.trip_id, p.from_traveler, p.to_traveler, p.amount, p.date, p.note||'']);
+  await db.runAsync('INSERT INTO payments (trip_id,from_traveler,to_traveler,amount,date,note,on_behalf_pair) VALUES (?,?,?,?,?,?,?)',
+    [p.trip_id, p.from_traveler, p.to_traveler, p.amount, p.date, p.note||'', p.on_behalf_pair||null]);
 };
 export const deletePayment = async (id) => { const db = await getDB(); await db.runAsync('DELETE FROM payments WHERE id=?', [id]); };
 
