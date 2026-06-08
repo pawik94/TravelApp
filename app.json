@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Travel Expenses",
-    "slug": "travel-app",
+    "slug": "travelapp",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
