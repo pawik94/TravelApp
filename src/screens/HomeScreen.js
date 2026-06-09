@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, Alert, RefreshControl } from 'react-native';
 import { COLORS } from '../theme';
-import { getTrips, deleteTrip, getTripStats } from '../database/db';
+import { getTrips, deleteTrip, getTripStats, setTripArchived } from '../database/db';
 import { formatPLN, formatDate } from '../utils/currency';
 import Header from '../components/Header';
 import { importTripJSON } from '../utils/backup';
@@ -11,10 +11,11 @@ export default function HomeScreen({ navigation }) {
   const [stats, setStats] = useState({});
   const [refreshing, setRefreshing] = useState(false);
   const [tick, setTick] = useState(0);
+  const [showArchived, setShowArchived] = useState(false);
 
   const loadData = useCallback(async () => {
     setRefreshing(true);
-    const data = await getTrips();
+    const data = await getTrips(showArchived);
     setTrips(data);
     const s = {};
     for (const t of data) { s[t.id] = await getTripStats(t.id); }
@@ -22,13 +23,14 @@ export default function HomeScreen({ navigation }) {
     setRefreshing(false);
   }, []);
 
-  React.useEffect(() => { loadData(); }, [tick]);
+  React.useEffect(() => { loadData(); }, [tick, showArchived]);
 
   const handleLongPress = (trip) => {
-    Alert.alert(trip.name, 'Co chcesz zrobić?', [
-      { text:'Edytuj', onPress:() => navigation.navigate('AddTrip', { tripId:trip.id, onBack:() => setTick(t=>t+1) }) },
-      { text:'Usuń', style:'destructive', onPress:() =>
-          Alert.alert('Usuń podróż', `Usunąć "${trip.name}"?`, [
+    Alert.alert(trip.name, '', [
+      { text:'✏️ Edytuj', onPress:() => navigation.navigate('AddTrip', { tripId:trip.id, onBack:() => setTick(t=>t+1) }) },
+      { text: trip.archived ? '📂 Przywróć' : '📁 Archiwizuj', onPress: async () => { await setTripArchived(trip.id, !trip.archived); loadData(); } },
+      { text:'🗑️ Usuń', style:'destructive', onPress:() =>
+          Alert.alert('Usuń podróż', 'Usunąć ' + trip.name + '?', [
             { text:'Anuluj', style:'cancel' },
             { text:'Usuń', style:'destructive', onPress:async () => { await deleteTrip(trip.id); loadData(); } },
           ])
@@ -53,8 +55,11 @@ export default function HomeScreen({ navigation }) {
           <Text style={styles.tripTotal}>{formatPLN(s.total)}</Text>
         </View>
         {item.destination ? <Text style={styles.meta}>📍 {item.destination}</Text> : null}
-        {item.start_date  ? <Text style={styles.meta}>📅 {formatDate(item.start_date)}{item.end_date ? ` – ${formatDate(item.end_date)}` : ''}</Text> : null}
-        <Text style={styles.count}>{s.count} wydatków</Text>
+        {item.start_date  ? <Text style={styles.meta}>📅 {formatDate(item.start_date)}{item.end_date ? ' – ' + formatDate(item.end_date) : ''}</Text> : null}
+        <View style={styles.countRow}>
+          <Text style={styles.count}>{s.count} wydatków</Text>
+          {item.archived ? <Text style={styles.archivedBadge}>📁 Archiwum</Text> : null}
+        </View>
       </TouchableOpacity>
     );
   };
@@ -73,6 +78,9 @@ export default function HomeScreen({ navigation }) {
           </View>
         }
       />
+      <TouchableOpacity style={styles.fabTertiary} onPress={()=>setShowArchived(v=>!v)} activeOpacity={0.85}>
+        <Text style={styles.fabIconSm}>{showArchived?'🏠':'📁'}</Text>
+      </TouchableOpacity>
       <TouchableOpacity style={styles.fabSecondary} onPress={handleImport} activeOpacity={0.85}>
         <Text style={styles.fabIcon}>📥</Text>
       </TouchableOpacity>
@@ -92,10 +100,14 @@ const styles = StyleSheet.create({
   tripTotal:{ fontSize:18, fontWeight:'700', color:COLORS.primary },
   meta:     { fontSize:13, color:COLORS.textSecondary, marginBottom:3 },
   count:    { fontSize:12, color:COLORS.textSecondary, marginTop:4 },
+  countRow: { flexDirection:'row', justifyContent:'space-between', alignItems:'center', marginTop:4 },
+  archivedBadge: { fontSize:11, color:COLORS.textSecondary, fontStyle:'italic' },
+  fabIconSm:{ color:COLORS.text, fontSize:22, lineHeight:26 },
   empty:    { alignItems:'center', marginTop:80 },
   emptyIcon:{ fontSize:64, marginBottom:16 },
   emptyTitle:{ fontSize:20, color:COLORS.text, fontWeight:'700' },
   emptyHint: { fontSize:14, color:COLORS.textSecondary, marginTop:8, textAlign:'center' },
+  fabTertiary:  { position:'absolute', right:160, bottom:28, width:58, height:58, borderRadius:29, backgroundColor:COLORS.surfaceVariant, borderWidth:1, borderColor:COLORS.border, alignItems:'center', justifyContent:'center', elevation:4 },
   fabSecondary: { position:'absolute', right:90, bottom:28, width:58, height:58, borderRadius:29, backgroundColor:COLORS.surfaceVariant, borderWidth:1, borderColor:COLORS.border, alignItems:'center', justifyContent:'center', elevation:4 },
   fab:      { position:'absolute', right:20, bottom:28, width:58, height:58, borderRadius:29, backgroundColor:COLORS.primary, alignItems:'center', justifyContent:'center', elevation:8 },
   fabIcon:  { color:COLORS.white, fontSize:32, lineHeight:36 },

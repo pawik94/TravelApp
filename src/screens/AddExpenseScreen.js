@@ -11,11 +11,12 @@ import {
   insertExpense, updateExpense, getTripById, getPairs,
 } from '../database/db';
 import { fetchExchangeRate, formatDate, todayStr } from '../utils/currency';
+import { loadPrefs, savePrefs } from '../utils/prefs';
 import ModalPicker from '../components/ModalPicker';
 import Header from '../components/Header';
 
 export default function AddExpenseScreen({ navigation, route }) {
-  const { tripId, expenseId } = route.params;
+  const { tripId, expenseId, copyFromId } = route.params;
 
   const [travelers,     setTravelers]     = useState([]);
   const [categories,    setCategories]    = useState([]);
@@ -62,11 +63,41 @@ export default function AddExpenseScreen({ navigation, route }) {
       setTravelers(tvl); setCategories(cats); setPairs(prs);
       const defCur = trip?.default_currency || 'EUR';
       setTripCurrency(defCur);
-      if (expenseId) { await loadExpense(tvl); }
-      else { if (tvl.length) setPaidBy(tvl[0].id); setCurrency(defCur); }
+      if (expenseId) {
+        await loadExpense(tvl);
+      } else if (copyFromId) {
+        await loadExpenseCopy(tvl, copyFromId);
+      } else {
+        const prefs = await loadPrefs(tripId);
+        if (prefs) {
+          if (prefs.paidBy && tvl.find(t => t.id === prefs.paidBy)) setPaidBy(prefs.paidBy);
+          else if (tvl.length) setPaidBy(tvl[0].id);
+          if (prefs.currency) setCurrency(prefs.currency);
+          if (prefs.method)   setMethod(prefs.method);
+          if (prefs.categoryId) setCategoryId(prefs.categoryId);
+        } else {
+          if (tvl.length) setPaidBy(tvl[0].id);
+          setCurrency(defCur);
+        }
+      }
     };
     init();
   }, []);
+
+  const loadExpenseCopy = async (tvl, sourceId) => {
+    const exp    = await getExpenseById(sourceId);
+    const shares = await getExpenseShares(sourceId);
+    if (!exp) return;
+    setPaidBy(exp.paid_by); setCategoryId(exp.category_id);
+    setAmount(String(exp.amount)); setCurrency(exp.currency);
+    setAmountPLN(String(exp.amount_pln.toFixed(2)));
+    setRate(exp.exchange_rate); setManualRate(String(exp.exchange_rate));
+    setDate(todayStr()); setMethod(exp.method);
+    setIsShared(exp.is_shared===1); setIncludeInSplit(exp.include_in_split!==0);
+    setComment(exp.comment||'');
+    setSelTravelers(new Set(shares.map(s=>s.traveler_id)));
+    if (exp.comment) setShowComment(true);
+  };
 
   const loadExpense = async (tvl) => {
     const exp    = await getExpenseById(expenseId);
@@ -207,6 +238,9 @@ export default function AddExpenseScreen({ navigation, route }) {
     if (expenseId) await updateExpense({...payload,id:expenseId}, shares);
     else           await insertExpense(payload, shares);
     setSaving(false);
+    if (!expenseId) {
+      await savePrefs(tripId, { paidBy, currency, method, categoryId });
+    }
     route.params?.onBack && route.params.onBack();
     navigation.goBack();
   };
@@ -228,7 +262,7 @@ export default function AddExpenseScreen({ navigation, route }) {
 
   return (
     <KeyboardAvoidingView style={{flex:1,backgroundColor:COLORS.background}} behavior={Platform.OS==='ios'?'padding':undefined}>
-      <Header title={expenseId?'Edytuj Wydatek':'Nowy Wydatek'} showBack onBack={()=>navigation.goBack()} />
+      <Header title={expenseId?'Edytuj Wydatek':copyFromId?'Kopiuj Wydatek':'Nowy Wydatek'} showBack onBack={()=>navigation.goBack()} />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
 
         {/* ── Kto zapłacił ── */}

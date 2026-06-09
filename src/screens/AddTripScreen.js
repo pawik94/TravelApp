@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, ScrollView, TouchableOpacity, StyleSheet, Alert, KeyboardAvoidingView, Platform, Modal } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { COLORS, CURRENCIES } from '../theme';
 import { getTripById, getTravelers, insertTrip, updateTrip, insertTraveler, deleteTraveler, getPairs, insertPair, deletePair } from '../database/db';
 import { formatDate } from '../utils/currency';
 import Header from '../components/Header';
+import DateRangePicker from '../components/DateRangePicker';
 import ModalPicker from '../components/ModalPicker';
 
 export default function AddTripScreen({ navigation, route }) {
@@ -14,7 +14,7 @@ export default function AddTripScreen({ navigation, route }) {
   const [comment,setComment]=useState(''); const [defaultCurrency,setDefaultCurrency]=useState('EUR');
   const [travelers,setTravelers]=useState([]); const [newTraveler,setNewTraveler]=useState('');
   const [pairs,setPairs]=useState([]);
-  const [datePickerStep,setDatePickerStep]=useState(null); // null | 'start' | 'end'
+  const [showDatePicker,setShowDatePicker]=useState(false);
   const [showPairModal,setShowPairModal]=useState(false);
   const [pairT1,setPairT1]=useState(null); const [pairT2,setPairT2]=useState(null); const [pairName,setPairName]=useState('');
 
@@ -29,21 +29,6 @@ export default function AddTripScreen({ navigation, route }) {
     const tvl = await getTravelers(editId);
     setTravelers(tvl);
     setPairs(await getPairs(editId));
-  };
-
-  const openDatePicker = () => setDatePickerStep('start');
-
-  const handleDateChange = (_, d) => {
-    if (!d) { setDatePickerStep(null); return; }
-    const iso = d.toISOString().split('T')[0];
-    if (datePickerStep === 'start') {
-      setStartDate(iso);
-      if (endDate && endDate < iso) setEndDate('');
-      setDatePickerStep('end');
-    } else {
-      setEndDate(iso);
-      setDatePickerStep(null);
-    }
   };
 
   const handleSave = async () => {
@@ -127,11 +112,8 @@ export default function AddTripScreen({ navigation, route }) {
         <Text style={styles.section}>Szczegóły podróży</Text>
         <TextInput style={styles.input} placeholder="Nazwa podróży *" placeholderTextColor={COLORS.textSecondary} value={name} onChangeText={setName} />
         <TextInput style={styles.input} placeholder="Cel podróży (np. Islandia)" placeholderTextColor={COLORS.textSecondary} value={destination} onChangeText={setDestination} />
-        <TouchableOpacity style={styles.dateRangeBtn} onPress={openDatePicker} activeOpacity={0.75}>
-          <Text style={styles.dateLbl}>
-            {datePickerStep==='start'?'Wybierz datę początkową...':
-             datePickerStep==='end'  ?'Wybierz datę końcową...':'Termin podróży'}
-          </Text>
+        <TouchableOpacity style={styles.dateRangeBtn} onPress={()=>setShowDatePicker(true)} activeOpacity={0.75}>
+          <Text style={styles.dateLbl}>Termin podróży</Text>
           <View style={styles.dateRangeRow}>
             <Text style={[styles.dateVal,!startDate&&styles.datePlaceholder]}>
               {startDate?formatDate(startDate):'Data od'}
@@ -142,14 +124,13 @@ export default function AddTripScreen({ navigation, route }) {
             </Text>
           </View>
         </TouchableOpacity>
-        {datePickerStep!==null&&(
-          <DateTimePicker
-            value={datePickerStep==='end'&&endDate?new Date(endDate):(startDate?new Date(startDate):new Date())}
-            mode="date" display="default"
-            minimumDate={datePickerStep==='end'&&startDate?new Date(startDate):undefined}
-            onChange={handleDateChange}
-          />
-        )}
+        <DateRangePicker
+          visible={showDatePicker}
+          startDate={startDate}
+          endDate={endDate}
+          onConfirm={(s,e)=>{setStartDate(s);setEndDate(e);setShowDatePicker(false);}}
+          onClose={()=>setShowDatePicker(false)}
+        />
         <TextInput style={[styles.input,{height:70,textAlignVertical:'top'}]} placeholder="Komentarz" placeholderTextColor={COLORS.textSecondary} value={comment} onChangeText={setComment} multiline />
 
         <Text style={styles.section}>Domyślna waluta</Text>

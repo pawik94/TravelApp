@@ -61,6 +61,7 @@ const _initDB = async (db) => {
     );
   `);
   try { await db.execAsync(`ALTER TABLE trips ADD COLUMN default_currency TEXT DEFAULT 'EUR'`); } catch (_) {}
+  try { await db.execAsync('ALTER TABLE trips ADD COLUMN archived INTEGER DEFAULT 0'); } catch (_) {}
   try { await db.execAsync(`ALTER TABLE expense_shares ADD COLUMN custom_amount REAL DEFAULT NULL`); } catch (_) {}
   try { await db.execAsync(`ALTER TABLE payments ADD COLUMN on_behalf_pair INTEGER DEFAULT NULL`); } catch (_) {}
   try {
@@ -75,7 +76,15 @@ const _initDB = async (db) => {
 };
 
 // ─── TRIPS ───────────────────────────────────────────────────────────────────
-export const getTrips = async () => { const db = await getDB(); return db.getAllAsync('SELECT * FROM trips ORDER BY created_at DESC'); };
+export const getTrips = async (archived = false) => {
+  const db = await getDB();
+  const where = archived ? 'WHERE archived=1' : 'WHERE (archived=0 OR archived IS NULL)';
+  return db.getAllAsync('SELECT * FROM trips ' + where + ' ORDER BY created_at DESC');
+};
+export const setTripArchived = async (tripId, archived) => {
+  const db = await getDB();
+  await db.runAsync('UPDATE trips SET archived=? WHERE id=?', [archived ? 1 : 0, tripId]);
+};
 export const getTripById = async (id) => { const db = await getDB(); return db.getFirstAsync('SELECT * FROM trips WHERE id=?', [id]); };
 export const getTripStats = async (tripId) => { const db = await getDB(); return db.getFirstAsync(`SELECT COUNT(*) AS count, COALESCE(SUM(amount_pln), 0) AS total FROM expenses WHERE trip_id=?`, [tripId]); };
 export const insertTrip = async (trip) => {

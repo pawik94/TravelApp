@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  View, Text, FlatList, TouchableOpacity, StyleSheet,
+  View, Text, TouchableOpacity, StyleSheet,
   Alert, ScrollView, Share, Modal, TextInput, Switch,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -11,6 +11,15 @@ import {
   getPayments, insertPayment, deletePayment, updatePayment, getPairs,
 } from '../database/db';
 import { formatPLN, formatAmount, formatDate, todayStr } from '../utils/currency';
+
+const dayLabel = (dateStr) => {
+  const today = todayStr();
+  const d = new Date(Date.now() - 86400000);
+  const yesterday = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  if (dateStr === today) return 'Dziś';
+  if (dateStr === yesterday) return 'Wczoraj';
+  return formatDate(dateStr);
+};
 import { calculateSettlement } from '../utils/settlement';
 import Header from '../components/Header';
 import { exportTripJSON } from '../utils/backup';
@@ -164,15 +173,15 @@ export default function TripScreen({ navigation, route }) {
     </View>
   );
 
-  const renderExpenseItem = ({item}) => (
-    <TouchableOpacity style={styles.expCard}
-      onPress={()=>navigation.navigate('AddExpense',{tripId,expenseId:item.id,onBack:()=>setTick(t=>t+1)})}
-      onLongPress={()=>handleDeleteExpense(item)} activeOpacity={0.75}>
+  const renderExpenseItem = (item) => (
+    <TouchableOpacity key={item.id} style={styles.expCard}
+      onPress={()=>navigation.navigate('AddExpense',{tripId,expenseId:item.id,onBack:loadAll})}
+      onLongPress={()=>handleExpenseLongPress(item)} activeOpacity={0.75}>
       <View style={styles.expLeft}>
         <View style={[styles.catDot,{backgroundColor:item.category_color||COLORS.border}]}/>
         <View style={styles.expInfo}>
           <Text style={styles.expComment} numberOfLines={1}>{item.comment||item.category_name||'—'}</Text>
-          <Text style={styles.expMeta}>{item.payer_name}  ·  {item.method}  ·  {formatDate(item.date)}</Text>
+          <Text style={styles.expMeta}>{item.payer_name}  ·  {item.method}</Text>
           {item.category_name?<Text style={[styles.expCatTag,{color:item.category_color||COLORS.textSecondary}]}>{item.category_name}</Text>:null}
         </View>
       </View>
@@ -184,6 +193,11 @@ export default function TripScreen({ navigation, route }) {
             {item.is_shared?'wspólny':'wybrani'}
           </Text>
         </View>
+        <TouchableOpacity style={styles.copyBtn}
+          onPress={()=>navigation.navigate('AddExpense',{tripId,copyFromId:item.id,onBack:loadAll})}
+          hitSlop={6}>
+          <Text style={styles.copyBtnTxt}>📋</Text>
+        </TouchableOpacity>
       </View>
     </TouchableOpacity>
   );
@@ -210,9 +224,22 @@ export default function TripScreen({ navigation, route }) {
         <Text style={styles.totalLabel}>{expenses.length} wydatków</Text>
         <Text style={styles.totalAmount}>{formatPLN(expenses.reduce((s,e)=>s+e.amount_pln,0))}</Text>
       </View>
-      <FlatList data={expenses} keyExtractor={item=>String(item.id)} renderItem={renderExpenseItem}
-        contentContainerStyle={styles.expList}
-        ListEmptyComponent={<Text style={styles.emptyText}>Brak wydatków</Text>}/>
+      <ScrollView contentContainerStyle={styles.expList}>
+        {expenses.length===0 && <Text style={styles.emptyText}>Brak wydatków</Text>}
+        {(() => {
+          const groups = {};
+          expenses.forEach(e => { if (!groups[e.date]) groups[e.date]=[]; groups[e.date].push(e); });
+          return Object.keys(groups).sort((a,b)=>b.localeCompare(a)).map(date => (
+            <View key={date}>
+              <View style={styles.dayHeader}>
+                <Text style={styles.dayHeaderTxt}>{dayLabel(date)}</Text>
+                <Text style={styles.dayHeaderTotal}>{formatPLN(groups[date].reduce((s,e)=>s+e.amount_pln,0))}</Text>
+              </View>
+              {groups[date].map(item => renderExpenseItem(item))}
+            </View>
+          ));
+        })()}
+      </ScrollView>
     </View>
   );
 
