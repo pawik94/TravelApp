@@ -20,7 +20,10 @@ export const fetchExchangeRate = async (currency, date) => {
   return null;
 };
 export const todayStr = () => new Date().toISOString().split('T')[0];
-export const formatPLN = (amount) => `${parseFloat(amount || 0).toFixed(2)} zl`;
+export const formatPLN = (amount) => {
+  const n = Math.ceil(parseFloat(amount || 0));
+  return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0') + '\u00a0z\u0142';
+};
 export const formatAmount = (amount, currency) => `${parseFloat(amount || 0).toFixed(2)} ${currency}`;
 export const formatDate = (dateStr) => {
   if (!dateStr) return '';

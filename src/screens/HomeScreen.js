@@ -36,7 +36,7 @@ export default function HomeScreen({ navigation }) {
           ])
       },
       { text:'Anuluj', style:'cancel' },
-    ]);
+    ], { cancelable: true });
   };
 
   const handleImport = async () => {

@@ -89,11 +89,18 @@ export default function TripScreen({ navigation, route }) {
     );
   };
 
-  const handleDeleteExpense = (exp) => {
-    Alert.alert('Usuń wydatek','Usunąć ten wydatek?',[
-      {text:'Anuluj',style:'cancel'},
-      {text:'Usuń',style:'destructive',onPress:async()=>{await deleteExpense(exp.id);loadAll();}},
-    ]);
+  const handleExpenseLongPress = (item) => {
+    Alert.alert(
+      item.comment || item.category_name || 'Wydatek',
+      formatPLN(item.amount_pln) + '  ·  ' + item.payer_name,
+      [
+        { text: 'Edytuj',  onPress: () => navigation.navigate('AddExpense', { tripId, expenseId: item.id, onBack: loadAll }) },
+        { text: 'Kopiuj',  onPress: () => navigation.navigate('AddExpense', { tripId, copyFromId: item.id, onBack: loadAll }) },
+        { text: 'Usuń', style: 'destructive', onPress: async () => { await deleteExpense(item.id); loadAll(); } },
+        { text: 'Anuluj', style: 'cancel' },
+      ],
+      { cancelable: true }
+    );
   };
 
   const openPayModal = () => {
@@ -150,10 +157,11 @@ export default function TripScreen({ navigation, route }) {
       'Płatność',
       formatPLN(p.amount)+' · '+p.from_name+' → '+p.to_name,
       [
-        {text:'✏️ Edytuj', onPress:()=>openEditPayModal(p)},
-        {text:'🗑️ Usuń', style:'destructive', onPress:async()=>{await deletePayment(p.id);loadAll();}},
-        {text:'Anuluj', style:'cancel'},
-      ]
+        { text: 'Edytuj', onPress: () => openEditPayModal(p) },
+        { text: 'Usuń', style: 'destructive', onPress: async () => { await deletePayment(p.id); loadAll(); } },
+        { text: 'Anuluj', style: 'cancel' },
+      ],
+      { cancelable: true }
     );
   };
 
@@ -269,14 +277,14 @@ export default function TripScreen({ navigation, route }) {
           const effective=p.paid+eff;
           return (
             <View key={p.id} style={styles.summaryRow}>
-              <Text style={styles.summaryName}>👤 {p.name}</Text>
-              <View style={{alignItems:'flex-end'}}>
-                <Text style={styles.summaryValue}>{formatPLN(effective)}</Text>
+              <Text style={styles.summaryName} numberOfLines={1}>{'👤 '+p.name}</Text>
+              <View style={styles.summaryRight}>
                 {Math.abs(eff)>0.005&&(
-                  <Text style={styles.summaryAdjust}>
-                    {'wydatki '+formatPLN(p.paid)+(eff>0?' +zwroty '+formatPLN(eff):' −zwroty '+formatPLN(-eff))}
+                  <Text style={styles.summaryAdjust} numberOfLines={1}>
+                    {formatPLN(p.paid)+(eff>0?' + '+formatPLN(eff):' − '+formatPLN(-eff))+' = '}
                   </Text>
                 )}
+                <Text style={styles.summaryValue}>{formatPLN(effective)}</Text>
               </View>
             </View>
           );
@@ -472,11 +480,12 @@ const styles = StyleSheet.create({
   summaryContent:{padding:16,paddingBottom:40},
   summaryHeader: {fontSize:11,fontWeight:'700',color:COLORS.textSecondary,textTransform:'uppercase',letterSpacing:0.8,marginTop:20,marginBottom:10},
   grandTotal:    {fontSize:36,fontWeight:'800',color:COLORS.primary,marginBottom:8},
-  summaryRow:    {flexDirection:'row',alignItems:'center',paddingVertical:12,borderBottomWidth:1,borderBottomColor:COLORS.border},
+  summaryRow:    {flexDirection:'row',alignItems:'center',paddingVertical:10,borderBottomWidth:1,borderBottomColor:COLORS.border},
+  summaryRight:  {flex:1,flexDirection:'row',justifyContent:'flex-end',alignItems:'center'},
   catDotSm:      {width:10,height:10,borderRadius:5,marginRight:10},
   summaryName:   {flex:1,color:COLORS.text,fontSize:15},
   summaryValue:  {color:COLORS.text,fontSize:15,fontWeight:'700'},
-  summaryAdjust: {color:COLORS.textSecondary,fontSize:11,marginTop:1},
+  summaryAdjust: {color:COLORS.textSecondary,fontSize:13,marginRight:4},
   balanceRow:    {backgroundColor:COLORS.surface,borderRadius:12,padding:14,marginBottom:10,borderWidth:1,borderColor:COLORS.border},
   balanceName:   {color:COLORS.text,fontSize:15,fontWeight:'600'},
   balanceSub:    {color:COLORS.textSecondary,fontSize:12,marginBottom:2},
