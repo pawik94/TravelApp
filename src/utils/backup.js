@@ -219,3 +219,45 @@ export const importTripJSON = async () => {
     return null;
   }
 };
+
+// ─── EKSPORT WSZYSTKICH PODRÓŻY ──────────────────────────────────────────────
+
+export const exportAllTripsJSON = async () => {
+  const db = await getDB();
+  const trips = await db.getAllAsync('SELECT * FROM trips WHERE (archived=0 OR archived IS NULL)');
+  const archived = await db.getAllAsync('SELECT * FROM trips WHERE archived=1');
+  const allTrips = [...trips, ...archived];
+
+  if (allTrips.length === 0) {
+    Alert.alert('Brak danych', 'Nie masz jeszcze żadnych podróży do zapisania.');
+    return;
+  }
+
+  const backups = [];
+  for (const trip of allTrips) {
+    const travelers  = await db.getAllAsync('SELECT * FROM travelers WHERE trip_id=?', [trip.id]);
+    const pairs      = await db.getAllAsync('SELECT * FROM pairs WHERE trip_id=?', [trip.id]);
+    const categories = await db.getAllAsync('SELECT * FROM categories WHERE trip_id=?', [trip.id]);
+    const expenses   = await db.getAllAsync('SELECT * FROM expenses WHERE trip_id=?', [trip.id]);
+    const payments   = await db.getAllAsync('SELECT * FROM payments WHERE trip_id=?', [trip.id]);
+    for (const exp of expenses) {
+      exp.shares = await db.getAllAsync(
+        'SELECT traveler_id, custom_amount FROM expense_shares WHERE expense_id=?', [exp.id]
+      );
+    }
+    backups.push({ version: 1, exported_at: new Date().toISOString(), trip, travelers, pairs, categories, expenses, payments });
+  }
+
+  const payload = { version: 1, exported_at: new Date().toISOString(), trips: backups };
+  const json = JSON.stringify(payload, null, 2);
+  const fileName = 'TravelExpenses_backup_' + Date.now() + '.json';
+  const filePath = FileSystem.cacheDirectory + fileName;
+
+  await FileSystem.writeAsStringAsync(filePath, json, { encoding: FileSystem.EncodingType.UTF8 });
+
+  if (await Sharing.isAvailableAsync()) {
+    await Sharing.shareAsync(filePath, { mimeType: 'application/json', dialogTitle: 'Zapisz kopię zapasową' });
+  } else {
+    Alert.alert('Błąd', 'Udostępnianie niedostępne na tym urządzeniu');
+  }
+};

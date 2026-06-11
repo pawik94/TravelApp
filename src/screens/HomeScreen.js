@@ -4,7 +4,7 @@ import { COLORS } from '../theme';
 import { getTrips, deleteTrip, getTripStats, setTripArchived } from '../database/db';
 import { formatPLN, formatDate } from '../utils/currency';
 import Header from '../components/Header';
-import { importTripJSON } from '../utils/backup';
+import { importTripJSON, exportAllTripsJSON } from '../utils/backup';
 
 export default function HomeScreen({ navigation }) {
   const [trips, setTrips] = useState([]);
@@ -21,9 +21,9 @@ export default function HomeScreen({ navigation }) {
     for (const t of data) { s[t.id] = await getTripStats(t.id); }
     setStats(s);
     setRefreshing(false);
-  }, []);
+  }, [showArchived, tick]);
 
-  React.useEffect(() => { loadData(); }, [tick, showArchived]);
+  React.useEffect(() => { loadData(); }, [loadData]);
 
   const handleLongPress = (trip) => {
     Alert.alert(trip.name, '', [
@@ -39,9 +39,17 @@ export default function HomeScreen({ navigation }) {
     ], { cancelable: true });
   };
 
-  const handleImport = async () => {
-    const newTripId = await importTripJSON();
-    if (newTripId) loadData();
+  const handleBackup = () => {
+    Alert.alert(
+      'Kopia zapasowa',
+      'Co chcesz zrobić?',
+      [
+        { text: '💾 Zapisz dane', onPress: async () => { await exportAllTripsJSON(); } },
+        { text: '📥 Wczytaj dane', onPress: async () => { const id = await importTripJSON(); if (id) loadData(); } },
+        { text: 'Anuluj', style: 'cancel' },
+      ],
+      { cancelable: true }
+    );
   };
 
   const renderTrip = ({ item }) => {
@@ -81,8 +89,8 @@ export default function HomeScreen({ navigation }) {
       <TouchableOpacity style={styles.fabTertiary} onPress={()=>setShowArchived(v=>!v)} activeOpacity={0.85}>
         <Text style={styles.fabIconSm}>{showArchived?'🏠':'📁'}</Text>
       </TouchableOpacity>
-      <TouchableOpacity style={styles.fabSecondary} onPress={handleImport} activeOpacity={0.85}>
-        <Text style={styles.fabIcon}>📥</Text>
+      <TouchableOpacity style={styles.fabSecondary} onPress={handleBackup} activeOpacity={0.85}>
+        <Text style={styles.fabIcon}>💾</Text>
       </TouchableOpacity>
       <TouchableOpacity style={styles.fab} onPress={() => navigation.navigate('AddTrip', { onBack:() => setTick(t=>t+1) })} activeOpacity={0.85}>
         <Text style={styles.fabIcon}>+</Text>
